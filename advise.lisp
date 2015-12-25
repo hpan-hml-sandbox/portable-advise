@@ -10,13 +10,15 @@
 (defstruct (advise-record
              (:conc-name #:advised-)
              (:constructor
-              make-advise-record (name original-function)))
+              make-advise-record (name env original-function)))
   (original-function
    #'(lambda ()
        (error "Default advised-original-function"))
    :type function)
-  ;; FIXME: add slot ENV
-  (name #:unmamed
+  ;; NB: no portable 'environment' type.
+  ;; 'env' slot may only be useful for debugging
+  (env)
+  (name #:unnamed
         :type function-name))
 
 (defconstant %advise-expand% 8)
@@ -27,10 +29,9 @@
               :adjustable t
               :fill-pointer 0))
 
-(defun get-advise (name &optional (errorp t))
+(defun get-advise (name env &optional (errorp t))
   (declare (type function-name name)
-           #+NIL (values (or null advise-record)
-                         (or null array-dimension-designator)))
+           (values (or null advise-record)))
   ;; FIXME: lock %ADVISE-REC% (READ, NON-RECURSIVE) in this function
   (labels ((test (a b)
              (etypecase a
@@ -43,35 +44,40 @@
     ;; (test '(a a) '(a a)) ;; => T
     ;; (test '(a a a) '(a a b)) ;; => NIL
     ;; (test '(a a b) '(a a b)) ;; => T
-    (let ((n (position name %advise-rec%
-                       :key #'advised-name
-                       :test (etypecase name
-                               (symbol #'eq)
-                               (cons #'test)))))
+    (let ((o (find-if
+              (lambda (o)
+                (let ((name2 (advised-name o))
+                      (env2 (advised-env o)))
+                      (and (test name name2)
+                           ;; FIXME: EQ compare of
+                           ;; NULL environment not accurate
+                           (eq env env2))))
+              %advise-rec%)))
       (cond
-        (n (values (aref %advise-rec% n) n))
+        (o (values o))
         (errorp (error "ADVISE-RECORD NOT FOUND: ~S" name))
         (t (values nil nil))))))
 
-(defun register-advise (name form)
+;; (trace get-advise)
+
+#+NIL (defmethod print-object ((o sb-kernel:lexenv) stream) (print-unreadable-object (o stream :type t :identity t)))
+
+(defun register-advise (name env form)
   ;; FIXME: lock %ADVISE-REC% (WRITE) in this function
-  (multiple-value-bind (adv n)
-      (get-advise name nil)
-    (declare (ignore n))
+  (let ((adv (get-advise name env nil)))
     (cond
       ((and adv (not (eq form (advised-original-function adv))))
        (error "ALREAY ADVISED: ~S => ~S" name adv))
-      (t (let ((adv (make-advise-record name form)))
+      (t (let ((adv (make-advise-record name env form)))
            (vector-push-extend adv %advise-rec% %advise-expand%)
            (values adv))))))
 
-(defun unregister-advise (name)
+(defun unregister-advise (name env)
   ;; FIXME: lock %ADVISE-REC% (WRITE) in this function
-  (multiple-value-bind (adv n)
-      (get-advise name nil)
+  (let ((adv (get-advise name env nil)))
     (cond
       (adv
-       (delete adv %advise-rec% :test #'eq)
+       (setf %advise-rec% (delete adv %advise-rec% :test #'eq))
        (values adv))
       (t (error "NOT ADVISED: ~S" name)))))
 
@@ -95,7 +101,7 @@
                     (macro-function ,%name ,%env)))))
 
        ;; FIXME: store ,%FORM on hash of (,%NAME ,%ENV)
-       (register-advise ,%name ,%form)
+       (register-advise ,%name ,%env ,%form)
            
        (defmacro ,name ,lambda
          ,@(when before
@@ -109,12 +115,11 @@
 
 
 (defmacro unadvise-macro (name &environment env)
-  (declare (ignore env)) ;; FIXME
   (let ((%name (gensym "%name-"))
         (%adv (gensym "%adv-"))
         (%fn (gensym "%fn-")))
     `(let* ((,%name (quote ,name))
-            (,%adv (unregister-advise ,%name))
+            (,%adv (unregister-advise ,%name ,env))
             (,%fn (advised-original-function ,%adv)))
        (setf (macro-function ,%name) ,%fn)
        (compile ,%name ,%fn)
