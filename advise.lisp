@@ -55,10 +55,6 @@
         (errorp (error "ADVISE-RECORD NOT FOUND: ~S" name))
         (t (values nil nil))))))
 
-;; (trace get-advise)
-
-#+NIL (defmethod print-object ((o sb-kernel:lexenv) stream) (print-unreadable-object (o stream :type t :identity t)))
-
 (defun register-advise (name env form)
   ;; FIXME: lock %ADVISE-REC% (WRITE) in this function
   (let ((adv (get-advise name env nil)))
