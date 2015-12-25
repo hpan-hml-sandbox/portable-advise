@@ -1,8 +1,23 @@
-;; kenobi - portable advise.lisp
+;; advise.lisp - portable reflective value wrapping for Common Lisp functions
+
 
 (in-package #:cl-user)
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  
+(defpackage #:reflexion
+  (:use
+   ;; #:my-trivial-utils.lib.ws
+   #:cl
+   ))
+
+)
+
+(in-package #:reflexion)
+
+
 (deftype function-name ()
+  ;; also defined in my-trivial-utils-lib
   '(or symbol (cons symbol t)))
 
 ;; trivial portable prototype of an 'advise' interface
@@ -60,7 +75,7 @@
   (let ((adv (get-advise name env nil)))
     (cond
       ((and adv (not (eq form (advised-original-function adv))))
-       (error "ALREAY ADVISED: ~S => ~S" name adv))
+       (error "ALREADY ADVISED: ~S => ~S" name adv))
       (t (let ((adv (make-advise-record name env form)))
            (vector-push-extend adv %advise-rec% %advise-expand%)
            (values adv))))))
@@ -85,6 +100,9 @@
         (%env (gensym "%env-"))
         (%form (gensym "%form-"))
         )
+
+    ;; FIXME: This may not propery deconstruct LAMBDA for bindings in
+    ;; the BEFORE, AFTER functions
     
     `(let* ((,%name (quote ,name))
             (,%env ,env)
@@ -93,7 +111,6 @@
                     ;; FIXME: ^ THIS might not always "work out"
                     (macro-function ,%name ,%env)))))
 
-       ;; FIXME: store ,%FORM on hash of (,%NAME ,%ENV)
        (register-advise ,%name ,%env ,%form)
            
        (defmacro ,name ,lambda
@@ -133,13 +150,14 @@
 
 #+test (quux 5)
 
+(macroexpand (quote
 (defadvise-macro quux (%arg)
   :before (lambda (%argtoo)
             (frob-trace "GOT ARGTOO BEFORE ~s" %argtoo))
   :after  (lambda (%argtoo)
             (frob-trace "GOT ARGTOO AFTER ~s" %argtoo))
   )
-             
+))             
 
 #+test (quux 12)
 ;; ^FIXME: *trace-output* shows order of eval: :BEFORE, :AFTER, :DURING
