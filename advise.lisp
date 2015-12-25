@@ -94,3 +94,48 @@
 ))
 
 |#
+
+;; Prototypes
+
+#+NIL
+(deftype function-name ()
+  '(or symbol (cons symbol t)))
+
+#+NIL
+(defmacro compute-defkind (name &environment env)
+  ;; endeavor to compute a discrete 'kind' of a function's definition
+  ;; 
+  ;; NB: This does not compute 'definitino source kind' - e.g.
+  ;; whether a function is defined of an accessor, constructor, or
+  ;; other non-DEFUN source - such that may serve to require an
+  ;; implementation-specific reflection, and may require more than
+  ;; only a function's name, to compute.
+  (let ((%name (gensym "%name-"))
+        (%env (gensym "%env-"))
+        (%fn (gensym "%fn-")))
+    `(let ((,%name (quote ,name))
+           (,%env ,env))
+       (declare (type (or symbol (cons symbol t)) ,%name))
+       (cond
+         ((macro-function ,%name ,%env)
+          (values 'defmacro))
+         ((and (consp ,%name)
+               (eq (car ,%name) 'setf))
+          ;; ??
+          (values 'defsetf))
+         ((and (consp ,%name)
+               (eq (car ,%name) 'lambda))
+          ;; ??
+          (values 'lambda))
+         (t
+          (let ((,%fn (fdefinition ,%name)))
+            (typecase ,%fn
+              (generic-function
+               (values 'defgeneric))
+              (standard-object ;; funcallable-standard-object portably
+               ;; ??
+               (values 'defclass))
+              (function
+               (values 'defun))
+              (t
+               (values :unknown)))))))))
