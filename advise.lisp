@@ -31,6 +31,7 @@
 
 (defun get-advise (name env &optional (errorp t))
   (declare (type function-name name)
+           (ignore env) ;; FIXME
            (values (or null advise-record)))
   ;; FIXME: lock %ADVISE-REC% (READ, NON-RECURSIVE) in this function
   (labels ((test (a b)
@@ -44,15 +45,11 @@
     ;; (test '(a a) '(a a)) ;; => T
     ;; (test '(a a a) '(a a b)) ;; => NIL
     ;; (test '(a a b) '(a a b)) ;; => T
-    (let ((o (find-if
-              (lambda (o)
-                (let ((name2 (advised-name o))
-                      (env2 (advised-env o)))
-                      (and (test name name2)
-                           ;; FIXME: EQ compare of
-                           ;; NULL environment not accurate
-                           (eq env env2))))
-              %advise-rec%)))
+    (let ((o (find name %advise-rec%
+                   :test (etypecase name
+                           (symbol #'eq)
+                           (cons #'test))
+                   :key #'advised-name)))
       (cond
         (o (values o))
         (errorp (error "ADVISE-RECORD NOT FOUND: ~S" name))
