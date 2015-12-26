@@ -40,15 +40,13 @@
   ((name :initarg :name
          :reader advise-condition-name)))
 
-(define-condition already-advised (simple-program-error
-                                   advise-condition)
+(define-condition already-advised (program-error advise-condition)
   ()
   (:repor
    (lambda (c s)
      (format s "Already advised: ~s" (advise-condition-name c)))))
 
-(define-condition not-advised (simple-program-error
-                                   advise-condition)
+(define-condition not-advised (program-error advise-condition)
   ()
   (:repor
    (lambda (c s)
