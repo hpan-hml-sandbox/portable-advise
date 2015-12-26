@@ -7,7 +7,7 @@
   
 (defpackage #:reflexion
   (:use
-   ;; #:my-trivial-utils.lib.ws
+   ;; #:libfoo
    #:cl
    ))
 
@@ -17,7 +17,7 @@
 
 
 (deftype function-name ()
-  ;; also defined in my-trivial-utils-lib
+  ;; also defined in libfoo
   '(or symbol (cons symbol t)))
 
 ;; trivial portable prototype of an 'advise' interface
@@ -35,6 +35,25 @@
   (env)
   (name #:unnamed
         :type function-name))
+
+(define-condition advise-condition ()
+  ((name :initarg :name
+         :reader advise-condition-name)))
+
+(define-condition already-advised (simple-program-error
+                                   advise-condition)
+  ()
+  (:repor
+   (lambda (c s)
+     (format s "Already advised: ~s" (advise-condition-name c)))))
+
+(define-condition not-advised (simple-program-error
+                                   advise-condition)
+  ()
+  (:repor
+   (lambda (c s)
+     (format s "Not advised: ~s" (advise-condition-name c)))))
+
 
 (defconstant %advise-expand% 8)
 
@@ -67,15 +86,16 @@
                    :key #'advised-name)))
       (cond
         (o (values o))
-        (errorp (error "ADVISE-RECORD NOT FOUND: ~S" name))
+        (errorp (error 'not-advised :name name))
         (t (values nil nil))))))
 
 (defun register-advise (name env form)
   ;; FIXME: lock %ADVISE-REC% (WRITE) in this function
   (let ((adv (get-advise name env nil)))
     (cond
-      ((and adv (not (eq form (advised-original-function adv))))
-       (error "ALREADY ADVISED: ~S => ~S" name adv))
+      ((and adv
+            (not (eq form (advised-original-function adv))))
+       (error 'already-advised :name name))
       (t (let ((adv (make-advise-record name env form)))
            (vector-push-extend adv %advise-rec% %advise-expand%)
            (values adv))))))
@@ -87,7 +107,7 @@
       (adv
        (setf %advise-rec% (delete adv %advise-rec% :test #'eq))
        (values adv))
-      (t (error "NOT ADVISED: ~S" name)))))
+      (t (error 'not-advised :name name)))))
 
 
   
