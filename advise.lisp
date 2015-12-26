@@ -32,7 +32,7 @@
    :type function)
   ;; NB: no portable 'environment' type.
   ;; 'env' slot may only be useful for debugging
-  (env)
+  (env nil)
   (name #:unnamed
         :type function-name))
 
@@ -42,23 +42,34 @@
 
 (define-condition already-advised (program-error advise-condition)
   ()
-  (:repor
+  (:report
    (lambda (c s)
      (format s "Already advised: ~s" (advise-condition-name c)))))
 
 (define-condition not-advised (program-error advise-condition)
   ()
-  (:repor
+  (:report
    (lambda (c s)
      (format s "Not advised: ~s" (advise-condition-name c)))))
 
 
 (defconstant %advise-expand% 8)
 
+(defconstant %advise-unbound%
+  (cond
+    ((boundp '%advise-unbound%)
+     (symbol-value '%advise-unbound%))
+    ;; NB: Non-sandard : ALLOCATE-INSTANCE on STRUCTURE-CLASS
+    (t (let ((inst (allocate-instance (find-class 'advise-record))))
+         (setf (advised-name inst)
+               (gensym "%unbound-"))))))
+                                       
+
 (defvar %advise-rec%
   (make-array %advise-expand%
               :element-type 'advise-record
               :adjustable t
+              :initial-element %advise-unbound%
               :fill-pointer 0))
 
 (defun get-advise (name env &optional (errorp t))
@@ -127,7 +138,9 @@
             (,%form
              (eval (function-lambda-expression
                     ;; FIXME: ^ THIS might not always "work out"
-                    (macro-function ,%name ,%env)))))
+                    (or (macro-function ,%name ,%env)
+                        (error "No macro function defined for ~S"
+                               ,%name))))))
 
        (register-advise ,%name ,%env ,%form)
            
@@ -175,7 +188,7 @@
   :after  (lambda (%argtoo)
             (frob-trace "GOT ARGTOO AFTER ~s" %argtoo))
   )
-))             
+))
 
 #+test (quux 12)
 ;; ^FIXME: *trace-output* shows order of eval: :BEFORE, :AFTER, :DURING
